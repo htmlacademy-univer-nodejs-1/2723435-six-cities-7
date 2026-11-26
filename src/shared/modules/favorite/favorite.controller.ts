@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import { inject, injectable } from 'inversify';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
+import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-exists.middleware.js';
 import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { AuthService } from '../user/auth.service.js';
@@ -11,6 +12,7 @@ import { OfferService } from '../offer/offer-service.interface.js';
 import { toOfferRdo } from '../offer/rdo/offer.rdo.js';
 
 type FavoriteRequest = Request<{ offerId: string }>;
+type ExistingOffer = NonNullable<Awaited<ReturnType<OfferService['findById']>>>;
 
 @injectable()
 export class FavoriteController extends Controller {
@@ -20,14 +22,15 @@ export class FavoriteController extends Controller {
     @inject(Component.AuthService) private readonly auth: AuthService,
   ) {
     super();
+    const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
     this.addRoute({ path: '/', method: 'get', handler: this.index });
     this.addRoute({
       path: '/:offerId', method: 'put', handler: this.add,
-      middleware: [new ValidateObjectIdMiddleware('offerId')],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
     });
     this.addRoute({
       path: '/:offerId', method: 'delete', handler: this.remove,
-      middleware: [new ValidateObjectIdMiddleware('offerId')],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
     });
   }
 
@@ -47,10 +50,7 @@ export class FavoriteController extends Controller {
 
   private async change(request: FavoriteRequest, response: Response, add: boolean): Promise<void> {
     const user = await this.auth.requireUser(request);
-    const offer = await this.offers.findById(request.params.offerId);
-    if (!offer) {
-      throw new HttpError(StatusCodes.NOT_FOUND, 'Offer not found');
-    }
+    const offer = await this.offers.findById(request.params.offerId) as ExistingOffer;
     const dto = { offerId: offer.id };
     const updated = add ? await this.users.addFavorite(user.id, dto) : await this.users.removeFavorite(user.id, dto);
     if (!updated) {

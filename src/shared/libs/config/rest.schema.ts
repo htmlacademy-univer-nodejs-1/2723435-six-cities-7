@@ -11,6 +11,7 @@ export type RestSchema = {
   DB_USER: string;
   DB_PASSWORD: string;
   DB_NAME: string;
+  UPLOAD_DIRECTORY: string;
 };
 
 // Convict reads process.env when the schema is created,
@@ -59,6 +60,12 @@ export const createRestSchema = () => convict<RestSchema>({
     doc: 'Database name (MongoDB)',
     format: String,
     env: 'DB_NAME',
+    default: null as unknown as string,
+  },
+  UPLOAD_DIRECTORY: {
+    doc: 'Directory for uploaded user files',
+    format: String,
+    env: 'UPLOAD_DIRECTORY',
     default: null as unknown as string,
   },
 });

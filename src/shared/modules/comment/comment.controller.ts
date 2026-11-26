@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import { StatusCodes } from 'http-status-codes';
 import { inject, injectable } from 'inversify';
 import { Controller } from '../../libs/rest/controller.js';
-import { HttpError } from '../../libs/rest/http-error.js';
+import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-exists.middleware.js';
 import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.middleware.js';
 import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
@@ -24,25 +23,24 @@ export class CommentController extends Controller {
   ) {
     super();
     const objectId = () => new ValidateObjectIdMiddleware('offerId');
+    const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
     this.addRoute({
       path: '/:offerId/comments', method: 'get', handler: this.index,
-      middleware: [objectId()],
+      middleware: [objectId(), offerExists()],
     });
     this.addRoute({
       path: '/:offerId/comments', method: 'post', handler: this.create,
-      middleware: [objectId(), new ValidateDtoMiddleware(CreateCommentDto)],
+      middleware: [objectId(), new ValidateDtoMiddleware(CreateCommentDto), offerExists()],
     });
   }
 
   public async index(request: Request<CommentParams>, response: Response): Promise<void> {
-    await this.ensureOffer(request.params.offerId);
     const comments = await this.comments.findByOfferId(request.params.offerId);
     this.ok(response, comments.map(toCommentRdo));
   }
 
   public async create(request: Request<CommentParams, unknown, CommentBody>, response: Response): Promise<void> {
     const user = await this.auth.requireUser(request);
-    await this.ensureOffer(request.params.offerId);
     const comment = await this.comments.create({
       text: request.body.text,
       rating: request.body.rating,
@@ -50,11 +48,5 @@ export class CommentController extends Controller {
       offerId: request.params.offerId,
     });
     this.created(response, toCommentRdo(comment));
-  }
-
-  private async ensureOffer(offerId: string): Promise<void> {
-    if (!await this.offers.findById(offerId)) {
-      throw new HttpError(StatusCodes.NOT_FOUND, 'Offer not found');
-    }
   }
 }

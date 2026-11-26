@@ -4,6 +4,7 @@ import { inject, injectable } from 'inversify';
 import { CityName } from '../../../types.js';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
+import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-exists.middleware.js';
 import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.middleware.js';
 import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
@@ -14,6 +15,7 @@ import { OfferService } from './offer-service.interface.js';
 import { toOfferRdo } from './rdo/offer.rdo.js';
 
 type OfferParams = { offerId: string };
+type ExistingOffer = NonNullable<Awaited<ReturnType<OfferService['findById']>>>;
 
 // Select only the fields declared by the public contract. This is not validation.
 export function getOfferData(dto: UpdateOfferDto): UpdateOfferDto {
@@ -29,11 +31,12 @@ export class OfferController extends Controller {
     @inject(Component.AuthService) private readonly auth: AuthService,
   ) {
     super();
+    const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
     this.addRoute({ path: '/', method: 'get', handler: this.index });
     this.addRoute({ path: '/premium', method: 'get', handler: this.premium });
     this.addRoute({
       path: '/:offerId', method: 'get', handler: this.show,
-      middleware: [new ValidateObjectIdMiddleware('offerId')],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
     });
     this.addRoute({
       path: '/', method: 'post', handler: this.create,
@@ -41,11 +44,11 @@ export class OfferController extends Controller {
     });
     this.addRoute({
       path: '/:offerId', method: 'patch', handler: this.update,
-      middleware: [new ValidateObjectIdMiddleware('offerId'), new ValidateDtoMiddleware(UpdateOfferDto)],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), new ValidateDtoMiddleware(UpdateOfferDto), offerExists()],
     });
     this.addRoute({
       path: '/:offerId', method: 'delete', handler: this.delete,
-      middleware: [new ValidateObjectIdMiddleware('offerId')],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
     });
   }
 
@@ -63,7 +66,7 @@ export class OfferController extends Controller {
 
   public async show(request: Request<OfferParams>, response: Response): Promise<void> {
     const user = await this.auth.getUser(request, false);
-    const offer = await this.findOffer(request.params.offerId);
+    const offer = await this.offers.findById(request.params.offerId) as ExistingOffer;
     this.ok(response, toOfferRdo(offer, user));
   }
 
@@ -76,7 +79,7 @@ export class OfferController extends Controller {
 
   public async update(request: Request<OfferParams, unknown, UpdateOfferDto>, response: Response): Promise<void> {
     const user = await this.auth.requireUser(request);
-    const offer = await this.findOffer(request.params.offerId);
+    const offer = await this.offers.findById(request.params.offerId) as ExistingOffer;
     this.checkAuthor(offer, user.id);
     const updated = await this.offers.updateById(offer.id, user.id, getOfferData(request.body));
     if (!updated) {
@@ -87,7 +90,7 @@ export class OfferController extends Controller {
 
   public async delete(request: Request<OfferParams>, response: Response): Promise<void> {
     const user = await this.auth.requireUser(request);
-    const offer = await this.findOffer(request.params.offerId);
+    const offer = await this.offers.findById(request.params.offerId) as ExistingOffer;
     this.checkAuthor(offer, user.id);
     if (!await this.offers.deleteById(offer.id, user.id)) {
       throw new HttpError(StatusCodes.NOT_FOUND, 'Offer not found');
