@@ -3,6 +3,7 @@ export const Component = {
   OfferController: Symbol.for('OfferController'),
   UserController: Symbol.for('UserController'),
   FavoriteController: Symbol.for('FavoriteController'),
+  CommentController: Symbol.for('CommentController'),
   ExceptionFilter: Symbol.for('ExceptionFilter'),
   RestApplication: Symbol.for('RestApplication'),
   Logger: Symbol.for('Logger'),

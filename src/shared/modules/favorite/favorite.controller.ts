@@ -3,6 +3,7 @@ import { StatusCodes } from 'http-status-codes';
 import { inject, injectable } from 'inversify';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
+import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { AuthService } from '../user/auth.service.js';
 import { UserService } from '../user/user-service.interface.js';
@@ -20,8 +21,14 @@ export class FavoriteController extends Controller {
   ) {
     super();
     this.addRoute({ path: '/', method: 'get', handler: this.index });
-    this.addRoute({ path: '/:offerId', method: 'put', handler: this.add });
-    this.addRoute({ path: '/:offerId', method: 'delete', handler: this.remove });
+    this.addRoute({
+      path: '/:offerId', method: 'put', handler: this.add,
+      middleware: [new ValidateObjectIdMiddleware('offerId')],
+    });
+    this.addRoute({
+      path: '/:offerId', method: 'delete', handler: this.remove,
+      middleware: [new ValidateObjectIdMiddleware('offerId')],
+    });
   }
 
   public async index(request: Request, response: Response): Promise<void> {

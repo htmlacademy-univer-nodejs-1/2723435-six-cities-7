@@ -1,7 +1,7 @@
 import express, { Express } from 'express';
 import { Server } from 'node:http';
 import { StatusCodes } from 'http-status-codes';
-import { inject, injectable } from 'inversify';
+import { inject, injectable, optional } from 'inversify';
 import { getMongoURI } from '../shared/helpers/index.js';
 import { Config, RestSchema } from '../shared/libs/config/index.js';
 import { DatabaseClient } from '../shared/libs/database-client/index.js';
@@ -10,6 +10,7 @@ import { ExceptionFilterInterface, HttpError } from '../shared/libs/rest/index.j
 import { OfferController } from '../shared/modules/offer/offer.controller.js';
 import { UserController } from '../shared/modules/user/user.controller.js';
 import { FavoriteController } from '../shared/modules/favorite/favorite.controller.js';
+import { CommentController } from '../shared/modules/comment/comment.controller.js';
 import { Component } from '../shared/types/index.js';
 
 @injectable()
@@ -25,6 +26,7 @@ export class RestApplication {
     @inject(Component.UserController) private readonly users: UserController,
     @inject(Component.FavoriteController) private readonly favorites: FavoriteController,
     @inject(Component.ExceptionFilter) private readonly exceptionFilter: ExceptionFilterInterface,
+    @inject(Component.CommentController) @optional() private readonly comments?: CommentController,
   ) {}
 
   private async initDb(): Promise<void> {
@@ -43,6 +45,9 @@ export class RestApplication {
     this.app.use('/offers', this.offers.router);
     this.app.use('/users', this.users.router);
     this.app.use('/favorites', this.favorites.router);
+    if (this.comments) {
+      this.app.use('/offers', this.comments.router);
+    }
   }
 
   private initExceptionFilters(): void {
