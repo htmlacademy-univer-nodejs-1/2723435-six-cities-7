@@ -7,6 +7,7 @@ import { AuthService } from '../dist/shared/modules/user/auth.service.js';
 import { UserController } from '../dist/shared/modules/user/user.controller.js';
 import { OfferController } from '../dist/shared/modules/offer/offer.controller.js';
 import { FavoriteController } from '../dist/shared/modules/favorite/favorite.controller.js';
+import { CommentController } from '../dist/shared/modules/comment/comment.controller.js';
 import { createSHA256 } from '../dist/shared/helpers/hash.js';
 
 async function withApi(run) {
@@ -43,9 +44,23 @@ async function withApi(run) {
     deleteById: async () => offer,
     findFavorites: async () => user.favorites.includes(offer.id) ? [offer] : [],
   };
+  const comment = {
+    id: '507f1f77bcf86cd799439013', text: 'Wonderful place', rating: 5,
+    publishedAt: new Date('2026-01-02'), author: user, offer: offer.id,
+    toObject() { const { toObject, ...data } = this; return data; },
+  };
+  const comments = {
+    findByOfferId: async (offerId) => offerId === offer.id ? [comment] : [],
+    create: async (dto) => {
+      assert.equal(dto.offerId, offer.id);
+      assert.equal(dto.authorId, user.id);
+      return { ...comment, text: dto.text, rating: dto.rating };
+    },
+  };
   const auth = new AuthService(users, config);
   const app = new RestApplication(logger, config, database, new OfferController(offers, auth),
-    new UserController(users, auth, config), new FavoriteController(offers, users, auth), new ExceptionFilter(logger));
+    new UserController(users, auth, config), new FavoriteController(offers, users, auth), new ExceptionFilter(logger),
+    new CommentController(comments, offers, auth));
   // Bind to an ephemeral port while exercising the same init path used in production.
   await app.init();
   const server = app.server;
@@ -141,8 +156,22 @@ test('favorites are personal and repeatable; successful deletions have no body',
   assert.equal(await response.text(), '');
 }));
 
+test('comments are listed and created through validated routes', () => withApi(async ({ url, json, login, offer }) => {
+  const list = await fetch(`${url}/offers/${offer.id}/comments`);
+  assert.equal(list.status, 200);
+  const [comment] = await list.json();
+  assert.equal(comment.text, 'Wonderful place');
+  assert.equal(comment.author.password, undefined);
+
+  const { token } = await login();
+  const created = await fetch(`${url}/offers/${offer.id}/comments`, json('POST', { text: 'Excellent apartment', rating: 4 }, token));
+  assert.equal(created.status, 201);
+  assert.equal((await created.json()).rating, 4);
+  assert.equal((await fetch(`${url}/offers/${offer.id}/comments`, json('POST', { text: 'bad', rating: 9 }, token))).status, 400);
+}));
+
 test('exception filter catches async failures, logs errors and returns JSON for malformed requests', () => withApi(async ({ url, offers, errors }) => {
-  assert.equal((await fetch(`${url}/offers/missing`)).status, 404);
+  assert.equal((await fetch(`${url}/offers/missing`)).status, 400);
   assert.equal((await fetch(`${url}/unknown`)).status, 404);
   const malformed = await fetch(`${url}/users/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);

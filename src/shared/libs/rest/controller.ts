@@ -1,4 +1,4 @@
-import { Response, Router } from 'express';
+import { RequestHandler, Response, Router } from 'express';
 import asyncHandler from 'express-async-handler';
 import { StatusCodes } from 'http-status-codes';
 import { injectable } from 'inversify';
@@ -10,7 +10,9 @@ export abstract class Controller implements ControllerInterface {
   public readonly router = Router();
 
   protected addRoute<Params, Body>(route: Route<Params, Body>): void {
-    this.router[route.method]<Params, unknown, Body>(route.path, ...(route.middleware ?? []), asyncHandler(route.handler.bind(this)));
+    const middleware = (route.middleware ?? []).map((item) =>
+      asyncHandler(item.execute.bind(item)) as RequestHandler<Params, unknown, Body>);
+    this.router[route.method]<Params, unknown, Body>(route.path, ...middleware, asyncHandler(route.handler.bind(this)));
   }
 
   protected send<T>(response: Response, statusCode: number, data: T): void {

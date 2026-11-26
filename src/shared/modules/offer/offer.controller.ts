@@ -4,6 +4,8 @@ import { inject, injectable } from 'inversify';
 import { CityName } from '../../../types.js';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
+import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.middleware.js';
+import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { AuthService } from '../user/auth.service.js';
 import { CreateOfferDto } from './dto/create-offer.dto.js';
@@ -29,10 +31,22 @@ export class OfferController extends Controller {
     super();
     this.addRoute({ path: '/', method: 'get', handler: this.index });
     this.addRoute({ path: '/premium', method: 'get', handler: this.premium });
-    this.addRoute({ path: '/:offerId', method: 'get', handler: this.show });
-    this.addRoute({ path: '/', method: 'post', handler: this.create });
-    this.addRoute({ path: '/:offerId', method: 'patch', handler: this.update });
-    this.addRoute({ path: '/:offerId', method: 'delete', handler: this.delete });
+    this.addRoute({
+      path: '/:offerId', method: 'get', handler: this.show,
+      middleware: [new ValidateObjectIdMiddleware('offerId')],
+    });
+    this.addRoute({
+      path: '/', method: 'post', handler: this.create,
+      middleware: [new ValidateDtoMiddleware(CreateOfferDto)],
+    });
+    this.addRoute({
+      path: '/:offerId', method: 'patch', handler: this.update,
+      middleware: [new ValidateObjectIdMiddleware('offerId'), new ValidateDtoMiddleware(UpdateOfferDto)],
+    });
+    this.addRoute({
+      path: '/:offerId', method: 'delete', handler: this.delete,
+      middleware: [new ValidateObjectIdMiddleware('offerId')],
+    });
   }
 
   public async index(request: Request, response: Response): Promise<void> {
