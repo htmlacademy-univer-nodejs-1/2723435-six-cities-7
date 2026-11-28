@@ -1,12 +1,14 @@
 import { NextFunction, Request, Response } from 'express';
 import { StatusCodes } from 'http-status-codes';
 import { inject, injectable } from 'inversify';
-import multer from 'multer';
 import { Config, RestSchema } from '../../libs/config/index.js';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
 import { Middleware } from '../../libs/rest/middleware.interface.js';
+import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-exists.middleware.js';
+import { UploadFileMiddleware } from '../../libs/rest/middleware/upload-file.middleware.js';
 import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.middleware.js';
+import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { UserService } from './user-service.interface.js';
 import { AuthService } from './auth.service.js';
@@ -22,18 +24,15 @@ export class UserController extends Controller {
     @inject(Component.Config) private readonly config: Config<RestSchema>,
   ) {
     super();
-    const upload = multer({
-      storage: multer.memoryStorage(),
-      limits: { fileSize: 5 * 1024 * 1024 },
-      fileFilter: (_request, file, callback) => {
-        if (!['image/jpeg', 'image/png'].includes(file.mimetype)) {
-          callback(new HttpError(StatusCodes.UNSUPPORTED_MEDIA_TYPE, 'Avatar must be JPG or PNG'));
-          return;
-        }
-        callback(null, true);
-      },
+    const avatarOptions = {
+      allowedMimeTypes: ['image/jpeg', 'image/png'],
+      maxFileSize: 5 * 1024 * 1024,
+    } as const;
+    const uploadDirectory = this.config.get('UPLOAD_DIRECTORY');
+    const uploadOptionalAvatar = new UploadFileMiddleware(uploadDirectory, 'avatar', {
+      ...avatarOptions,
+      required: false,
     });
-    const uploadAvatar: Middleware = { execute: upload.single('avatar') };
     const registrationGuard: Middleware = {
       execute: async (request: Request, _response: Response, next: NextFunction): Promise<void> => {
         if (await this.auth.getUser(request, false)) {
@@ -51,7 +50,7 @@ export class UserController extends Controller {
       path: '/register',
       method: 'post',
       handler: this.register,
-      middleware: [uploadAvatar, registrationGuard, new ValidateDtoMiddleware(CreateUserDto)],
+      middleware: [uploadOptionalAvatar, new ValidateDtoMiddleware(CreateUserDto), registrationGuard],
     });
     this.addRoute({
       path: '/login',
@@ -61,12 +60,22 @@ export class UserController extends Controller {
     });
     this.addRoute({ path: '/login', method: 'get', handler: this.check });
     this.addRoute({ path: '/logout', method: 'delete', handler: this.logout });
+    this.addRoute({
+      path: '/:userId/avatar',
+      method: 'post',
+      handler: this.uploadAvatar,
+      middleware: [
+        new ValidateObjectIdMiddleware('userId'),
+        new UploadFileMiddleware(uploadDirectory, 'avatar', avatarOptions),
+        new DocumentExistsMiddleware(this.users, 'User', 'userId'),
+      ],
+    });
   }
 
   public async register(request: Request<Record<string, string>, unknown, CreateUserDto>, response: Response): Promise<void> {
     const { name, email, password, type } = request.body;
     const avatarUrl = request.file
-      ? `data:${request.file.mimetype};base64,${request.file.buffer.toString('base64')}`
+      ? `/upload/${request.file.filename}`
       : undefined;
     const user = await this.users.create({ name, email, password, type, avatarUrl }, this.config.get('SALT'));
     this.created(response, toUserRdo(user));
@@ -84,5 +93,15 @@ export class UserController extends Controller {
   public async logout(request: Request, response: Response): Promise<void> {
     await this.auth.logout(request);
     this.noContent(response);
+  }
+
+  public async uploadAvatar(request: Request<{ userId: string }>, response: Response): Promise<void> {
+    const { filename } = request.file as Express.Multer.File;
+    const avatarUrl = `/upload/${filename}`;
+    const user = await this.users.updateById(request.params.userId, { avatarUrl });
+    if (!user) {
+      throw new HttpError(StatusCodes.NOT_FOUND, 'User not found');
+    }
+    this.created(response, toUserRdo(user));
   }
 }

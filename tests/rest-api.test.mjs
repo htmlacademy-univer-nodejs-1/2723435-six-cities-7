@@ -1,5 +1,8 @@
 import 'reflect-metadata';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { RestApplication } from '../dist/rest/rest.application.js';
 import { ExceptionFilter } from '../dist/shared/libs/rest/exception-filter.js';
@@ -13,7 +16,8 @@ import { createSHA256 } from '../dist/shared/helpers/hash.js';
 async function withApi(run) {
   const errors = [];
   const logger = { info() {}, debug() {}, warn() {}, error(...args) { errors.push(args); } };
-  const config = { get: (key) => ({ PORT: 0, SALT: 'test-salt' })[key] };
+  const uploadDirectory = await mkdtemp(join(tmpdir(), 'six-cities-upload-'));
+  const config = { get: (key) => ({ PORT: 0, SALT: 'test-salt', UPLOAD_DIRECTORY: uploadDirectory })[key] };
   let disconnected = false;
   const database = { connect: async () => {}, disconnect: async () => { disconnected = true; } };
   const user = {
@@ -33,6 +37,7 @@ async function withApi(run) {
     findByEmail: async (email) => email === user.email ? user : null,
     findById: async () => user,
     create: async (dto) => ({ ...user, ...dto }),
+    updateById: async (_id, dto) => Object.assign(user, dto),
     addFavorite: async (_id, dto) => { user.favorites = [...new Set([...user.favorites, dto.offerId])]; return user; },
     removeFavorite: async (_id, dto) => { user.favorites = user.favorites.filter((id) => id !== dto.offerId); return user; },
   };
@@ -79,6 +84,7 @@ async function withApi(run) {
   } finally {
     server.closeAllConnections();
     await app.close();
+    await rm(uploadDirectory, { recursive: true, force: true });
     assert.equal(disconnected, true);
   }
 }
@@ -124,11 +130,19 @@ test('registration handles multipart avatar, duplicate email and authenticated c
   const response = await fetch(`${url}/users/register`, { method: 'POST', body: form });
   assert.equal(response.status, 201);
   const user = await response.json();
-  assert.match(user.avatarUrl, /^data:image\/png;base64,/);
+  assert.match(user.avatarUrl, /^\/upload\/[A-Za-z0-9_-]+\.png$/);
+  assert.equal((await fetch(`${url}${user.avatarUrl}`)).status, 200);
   assert.equal(user.password, undefined);
-  assert.equal((await fetch(`${url}/users/register`, json('POST', { email: 'alice@example.com' }))).status, 409);
+  const duplicate = { name: 'Alice', email: 'alice@example.com', password: '123456', type: 'pro' };
+  assert.equal((await fetch(`${url}/users/register`, json('POST', duplicate))).status, 409);
   const { token } = await login();
-  assert.equal((await fetch(`${url}/users/register`, json('POST', {}, token))).status, 403);
+  assert.equal((await fetch(`${url}/users/register`, json('POST', duplicate, token))).status, 403);
+
+  const avatar = new FormData();
+  avatar.set('avatar', new Blob([Buffer.from('ffd8ffe0', 'hex')], { type: 'image/jpeg' }), 'avatar.jpg');
+  const uploaded = await fetch(`${url}/users/507f1f77bcf86cd799439011/avatar`, { method: 'POST', body: avatar });
+  assert.equal(uploaded.status, 201);
+  assert.match((await uploaded.json()).avatarUrl, /^\/upload\/[A-Za-z0-9_-]+\.jpg$/);
 }));
 
 test('offer writes use the session author and ignore fields outside the DTO', () => withApi(async ({ url, json, login, offer }) => {
@@ -168,10 +182,12 @@ test('comments are listed and created through validated routes', () => withApi(a
   assert.equal(created.status, 201);
   assert.equal((await created.json()).rating, 4);
   assert.equal((await fetch(`${url}/offers/${offer.id}/comments`, json('POST', { text: 'bad', rating: 9 }, token))).status, 400);
+  assert.equal((await fetch(`${url}/offers/507f1f77bcf86cd799439099/comments`, json('POST', { text: 'bad', rating: 9 }, token))).status, 400);
 }));
 
 test('exception filter catches async failures, logs errors and returns JSON for malformed requests', () => withApi(async ({ url, offers, errors }) => {
   assert.equal((await fetch(`${url}/offers/missing`)).status, 400);
+  assert.equal((await fetch(`${url}/offers/507f1f77bcf86cd799439099`)).status, 404);
   assert.equal((await fetch(`${url}/unknown`)).status, 404);
   const malformed = await fetch(`${url}/users/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' });
   assert.equal(malformed.status, 400);

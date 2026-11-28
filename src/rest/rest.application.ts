@@ -1,5 +1,6 @@
 import express, { Express } from 'express';
 import { Server } from 'node:http';
+import { resolve as resolvePath } from 'node:path';
 import { StatusCodes } from 'http-status-codes';
 import { inject, injectable, optional } from 'inversify';
 import { getMongoURI } from '../shared/helpers/index.js';
@@ -39,6 +40,7 @@ export class RestApplication {
 
   private initMiddleware(): void {
     this.app.use(express.json());
+    this.app.use('/upload', express.static(resolvePath(this.config.get('UPLOAD_DIRECTORY'))));
   }
 
   private initControllers(): void {

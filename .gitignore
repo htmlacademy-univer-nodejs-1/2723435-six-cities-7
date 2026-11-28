@@ -19,3 +19,6 @@ run.txt
 # Generated mock data (can be huge)
 mocks/offers-generated*.tsv
 
+# User uploads
+/upload/
+

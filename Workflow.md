@@ -178,18 +178,20 @@ docker run --rm -it --network six-cities-net -v "${PWD}:/app" -w /app node:18-sl
 ## REST API
 
 Сервер Express запускается после подключения к MongoDB на порту `PORT`.
-Поддерживаются маршруты из `specification/specification.yml`, кроме комментариев:
+Поддерживаются маршруты из `specification/specification.yml`:
 
 - `GET /offers`, `GET /offers/premium?city=Paris`, `GET /offers/:offerId`;
 - `POST /offers`, `PATCH /offers/:offerId`, `DELETE /offers/:offerId`;
-- `POST /users/register`, `POST /users/login`, `GET /users/login`, `DELETE /users/logout`;
+- `GET/POST /offers/:offerId/comments`;
+- `POST /users/register`, `POST /users/:userId/avatar`, `POST /users/login`, `GET /users/login`, `DELETE /users/logout`;
 - `GET /favorites`, `PUT /favorites/:offerId`, `DELETE /favorites/:offerId`.
 
 Тела запросов предложений и входа передаются как JSON. Регистрация поддерживает
 `multipart/form-data` с полями `name`, `email`, `password`, `type` и необязательным
-файлом `avatar` (JPG/PNG, до 5 МБ). Аватар сохраняется в MongoDB как data URL;
-без файла возвращается изображение по умолчанию. Для регистрации без файла также
-можно передать JSON.
+файлом `avatar` (JPG/PNG, до 5 МБ). Файлы сохраняются в каталоге из переменной
+`UPLOAD_DIRECTORY` и доступны по URL `/upload/<имя-файла>`. Без файла возвращается
+изображение по умолчанию. Для регистрации без файла также можно передать JSON.
+Пример отдельной загрузки аватара находится в `requests/users.http`.
 
 Вход возвращает `{ token, user }`. Для авторизованных запросов передайте заголовок
 `Authorization: Bearer <token>`. Сессии хранятся в памяти одного процесса и теряются
@@ -198,8 +200,8 @@ docker run --rm -it --network six-cities-net -v "${PWD}:/app" -w /app node:18-sl
 
 Ответы формируются через RDO и `class-transformer`, без паролей и служебных полей
 MongoDB. Ошибки возвращаются как `{ message }`; неожиданные исключения логируются
-и дают ответ `500` без внутренних подробностей. Проверка полей входных DTO будет
-добавлена на следующем этапе; существующие ограничения моделей MongoDB сохранены.
+и дают ответ `500` без внутренних подробностей. ObjectId, входные DTO и существование
+документов проверяются middleware до выполнения обработчиков маршрутов.
 
 Проверки: `npm run lint`, `npm test`. Тесты сервисов и HTTP-маршрутов используют
 подменённые зависимости и не требуют работающей MongoDB.
