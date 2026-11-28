@@ -9,6 +9,7 @@ import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.m
 import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { AuthService } from '../user/auth.service.js';
+import { PrivateRouteMiddleware } from '../user/middleware/private-route.middleware.js';
 import { CreateOfferDto } from './dto/create-offer.dto.js';
 import { UpdateOfferDto } from './dto/update-offer.dto.js';
 import { OfferService } from './offer-service.interface.js';
@@ -32,6 +33,7 @@ export class OfferController extends Controller {
   ) {
     super();
     const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
+    const privateRoute = () => new PrivateRouteMiddleware(this.auth);
     this.addRoute({ path: '/', method: 'get', handler: this.index });
     this.addRoute({ path: '/premium', method: 'get', handler: this.premium });
     this.addRoute({
@@ -40,15 +42,20 @@ export class OfferController extends Controller {
     });
     this.addRoute({
       path: '/', method: 'post', handler: this.create,
-      middleware: [new ValidateDtoMiddleware(CreateOfferDto)],
+      middleware: [new ValidateDtoMiddleware(CreateOfferDto), privateRoute()],
     });
     this.addRoute({
       path: '/:offerId', method: 'patch', handler: this.update,
-      middleware: [new ValidateObjectIdMiddleware('offerId'), new ValidateDtoMiddleware(UpdateOfferDto), offerExists()],
+      middleware: [
+        new ValidateObjectIdMiddleware('offerId'),
+        new ValidateDtoMiddleware(UpdateOfferDto),
+        privateRoute(),
+        offerExists(),
+      ],
     });
     this.addRoute({
       path: '/:offerId', method: 'delete', handler: this.delete,
-      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), privateRoute(), offerExists()],
     });
   }
 

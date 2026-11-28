@@ -7,6 +7,7 @@ import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-ex
 import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { AuthService } from '../user/auth.service.js';
+import { PrivateRouteMiddleware } from '../user/middleware/private-route.middleware.js';
 import { UserService } from '../user/user-service.interface.js';
 import { OfferService } from '../offer/offer-service.interface.js';
 import { toOfferRdo } from '../offer/rdo/offer.rdo.js';
@@ -23,14 +24,15 @@ export class FavoriteController extends Controller {
   ) {
     super();
     const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
-    this.addRoute({ path: '/', method: 'get', handler: this.index });
+    const privateRoute = () => new PrivateRouteMiddleware(this.auth);
+    this.addRoute({ path: '/', method: 'get', handler: this.index, middleware: [privateRoute()] });
     this.addRoute({
       path: '/:offerId', method: 'put', handler: this.add,
-      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), privateRoute(), offerExists()],
     });
     this.addRoute({
       path: '/:offerId', method: 'delete', handler: this.remove,
-      middleware: [new ValidateObjectIdMiddleware('offerId'), offerExists()],
+      middleware: [new ValidateObjectIdMiddleware('offerId'), privateRoute(), offerExists()],
     });
   }
 

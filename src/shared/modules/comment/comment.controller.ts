@@ -7,6 +7,7 @@ import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-
 import { Component } from '../../types/index.js';
 import { OfferService } from '../offer/offer-service.interface.js';
 import { AuthService } from '../user/auth.service.js';
+import { PrivateRouteMiddleware } from '../user/middleware/private-route.middleware.js';
 import { CommentService } from './comment-service.interface.js';
 import { CreateCommentDto } from './dto/create-comment.dto.js';
 import { toCommentRdo } from './rdo/comment.rdo.js';
@@ -24,13 +25,14 @@ export class CommentController extends Controller {
     super();
     const objectId = () => new ValidateObjectIdMiddleware('offerId');
     const offerExists = () => new DocumentExistsMiddleware(this.offers, 'Offer', 'offerId');
+    const privateRoute = () => new PrivateRouteMiddleware(this.auth);
     this.addRoute({
       path: '/:offerId/comments', method: 'get', handler: this.index,
       middleware: [objectId(), offerExists()],
     });
     this.addRoute({
       path: '/:offerId/comments', method: 'post', handler: this.create,
-      middleware: [objectId(), new ValidateDtoMiddleware(CreateCommentDto), offerExists()],
+      middleware: [objectId(), new ValidateDtoMiddleware(CreateCommentDto), privateRoute(), offerExists()],
     });
   }
 
