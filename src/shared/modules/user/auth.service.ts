@@ -33,17 +33,28 @@ export class AuthService {
   }
 
   public async getUser(request: Request, required = true): Promise<DocumentType<UserEntity> | null> {
+    const id = this.getUserId(request, required);
+    const user = id ? await this.users.findById(id) : null;
+    if (!id) {
+      return null;
+    }
+    if (!user) {
+      throw new HttpError(StatusCodes.UNAUTHORIZED, 'Authentication required');
+    }
+    return user;
+  }
+
+  public getUserId(request: Request, required = true): string | null {
     const authorization = request.get('Authorization');
     if (!authorization && !required) {
       return null;
     }
     const token = authorization?.match(/^Bearer (\S+)$/)?.[1];
     const id = token ? this.sessions.get(token) : undefined;
-    const user = id ? await this.users.findById(id) : null;
-    if (!user) {
+    if (!id) {
       throw new HttpError(StatusCodes.UNAUTHORIZED, 'Authentication required');
     }
-    return user;
+    return id;
   }
 
   public async requireUser(request: Request): Promise<DocumentType<UserEntity>> {
@@ -55,7 +66,6 @@ export class AuthService {
   }
 
   public async logout(request: Request): Promise<void> {
-    await this.requireUser(request);
     const token = request.get('Authorization')?.slice('Bearer '.length) ?? '';
     this.sessions.delete(token);
   }

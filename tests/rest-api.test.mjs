@@ -135,17 +135,28 @@ test('registration handles multipart avatar, duplicate email and authenticated c
   assert.equal(user.password, undefined);
   const duplicate = { name: 'Alice', email: 'alice@example.com', password: '123456', type: 'pro' };
   assert.equal((await fetch(`${url}/users/register`, json('POST', duplicate))).status, 409);
+
+  const unauthorizedAvatar = new FormData();
+  unauthorizedAvatar.set('avatar', new Blob([Buffer.from('ffd8ffe0', 'hex')], { type: 'image/jpeg' }), 'avatar.jpg');
+  assert.equal((await fetch(`${url}/users/avatar`, { method: 'POST', body: unauthorizedAvatar })).status, 401);
+
   const { token } = await login();
   assert.equal((await fetch(`${url}/users/register`, json('POST', duplicate, token))).status, 403);
 
   const avatar = new FormData();
   avatar.set('avatar', new Blob([Buffer.from('ffd8ffe0', 'hex')], { type: 'image/jpeg' }), 'avatar.jpg');
-  const uploaded = await fetch(`${url}/users/507f1f77bcf86cd799439011/avatar`, { method: 'POST', body: avatar });
+  const uploaded = await fetch(`${url}/users/avatar`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: avatar,
+  });
   assert.equal(uploaded.status, 201);
   assert.match((await uploaded.json()).avatarUrl, /^\/upload\/[A-Za-z0-9_-]+\.jpg$/);
+  assert.equal((await fetch(`${url}/users/507f1f77bcf86cd799439011/avatar`, { method: 'POST' })).status, 404);
 }));
 
 test('offer writes use the session author and ignore fields outside the DTO', () => withApi(async ({ url, json, login, offer }) => {
+  assert.equal((await fetch(`${url}/offers`, json('POST', offer))).status, 401);
   const { token } = await login();
   assert.equal((await fetch(`${url}/offers`, json('POST', { ...offer, authorId: 'forged' }, token))).status, 201);
   const response = await fetch(`${url}/offers/${offer.id}`, json('PATCH', { title: 'Updated apartment', author: 'forged', rating: 5 }, token));
@@ -164,6 +175,10 @@ test('favorites are personal and repeatable; successful deletions have no body',
     const response = await fetch(`${url}/favorites/${offer.id}`, json(method, undefined, token));
     assert.equal(response.status, 200);
     assert.equal((await response.json()).isFavorite, method === 'PUT');
+    const [authorizedOffer] = await (await fetch(`${url}/offers`, json('GET', undefined, token))).json();
+    const [anonymousOffer] = await (await fetch(`${url}/offers`)).json();
+    assert.equal(authorizedOffer.isFavorite, method === 'PUT');
+    assert.equal(anonymousOffer.isFavorite, false);
   }
   const response = await fetch(`${url}/offers/${offer.id}`, json('DELETE', undefined, token));
   assert.equal(response.status, 204);
@@ -177,6 +192,7 @@ test('comments are listed and created through validated routes', () => withApi(a
   assert.equal(comment.text, 'Wonderful place');
   assert.equal(comment.author.password, undefined);
 
+  assert.equal((await fetch(`${url}/offers/${offer.id}/comments`, json('POST', { text: 'Excellent apartment', rating: 4 }))).status, 401);
   const { token } = await login();
   const created = await fetch(`${url}/offers/${offer.id}/comments`, json('POST', { text: 'Excellent apartment', rating: 4 }, token));
   assert.equal(created.status, 201);

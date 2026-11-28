@@ -309,13 +309,14 @@ paths:
                 $ref: '#/components/schemas/User'
         '401':
           $ref: '#/components/responses/Unauthorized'
-  /users/{userId}/avatar:
+  /users/avatar:
     post:
       tags:
         - Users
       operationId: uploadUserAvatar
-      summary: Upload a user avatar
-      security: []
+      summary: Загрузить аватар текущего пользователя
+      security:
+        - bearerAuth: []
       requestBody:
         required: true
         content:
@@ -340,12 +341,10 @@ paths:
                 $ref: '#/components/schemas/User'
         '400':
           $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
-    parameters:
-      - $ref: '#/components/parameters/UserId'
   /users/logout:
     delete:
       tags:
@@ -436,13 +435,6 @@ components:
       in: path
       required: true
       description: MongoDB ObjectId предложения.
-      schema:
-        $ref: '#/components/schemas/Id'
-    UserId:
-      name: userId
-      in: path
-      required: true
-      description: MongoDB ObjectId of the user.
       schema:
         $ref: '#/components/schemas/Id'
   responses:

@@ -5,15 +5,14 @@ import { Config, RestSchema } from '../../libs/config/index.js';
 import { Controller } from '../../libs/rest/controller.js';
 import { HttpError } from '../../libs/rest/http-error.js';
 import { Middleware } from '../../libs/rest/middleware.interface.js';
-import { DocumentExistsMiddleware } from '../../libs/rest/middleware/document-exists.middleware.js';
 import { UploadFileMiddleware } from '../../libs/rest/middleware/upload-file.middleware.js';
 import { ValidateDtoMiddleware } from '../../libs/rest/middleware/validate-dto.middleware.js';
-import { ValidateObjectIdMiddleware } from '../../libs/rest/middleware/validate-object-id.middleware.js';
 import { Component } from '../../types/index.js';
 import { UserService } from './user-service.interface.js';
 import { AuthService } from './auth.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { LoginUserDto } from './dto/login-user.dto.js';
+import { PrivateRouteMiddleware } from './middleware/private-route.middleware.js';
 import { toUserRdo } from './rdo/user.rdo.js';
 
 @injectable()
@@ -58,16 +57,16 @@ export class UserController extends Controller {
       handler: this.login,
       middleware: [new ValidateDtoMiddleware(LoginUserDto)],
     });
-    this.addRoute({ path: '/login', method: 'get', handler: this.check });
-    this.addRoute({ path: '/logout', method: 'delete', handler: this.logout });
+    const privateRoute = () => new PrivateRouteMiddleware(this.auth);
+    this.addRoute({ path: '/login', method: 'get', handler: this.check, middleware: [privateRoute()] });
+    this.addRoute({ path: '/logout', method: 'delete', handler: this.logout, middleware: [privateRoute()] });
     this.addRoute({
-      path: '/:userId/avatar',
+      path: '/avatar',
       method: 'post',
       handler: this.uploadAvatar,
       middleware: [
-        new ValidateObjectIdMiddleware('userId'),
+        privateRoute(),
         new UploadFileMiddleware(uploadDirectory, 'avatar', avatarOptions),
-        new DocumentExistsMiddleware(this.users, 'User', 'userId'),
       ],
     });
   }
@@ -95,12 +94,13 @@ export class UserController extends Controller {
     this.noContent(response);
   }
 
-  public async uploadAvatar(request: Request<{ userId: string }>, response: Response): Promise<void> {
+  public async uploadAvatar(request: Request, response: Response): Promise<void> {
+    const currentUser = await this.auth.requireUser(request);
     const { filename } = request.file as Express.Multer.File;
     const avatarUrl = `/upload/${filename}`;
-    const user = await this.users.updateById(request.params.userId, { avatarUrl });
+    const user = await this.users.updateById(currentUser.id, { avatarUrl });
     if (!user) {
-      throw new HttpError(StatusCodes.NOT_FOUND, 'User not found');
+      throw new HttpError(StatusCodes.UNAUTHORIZED, 'User no longer exists');
     }
     this.created(response, toUserRdo(user));
   }

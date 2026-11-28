@@ -183,7 +183,7 @@ docker run --rm -it --network six-cities-net -v "${PWD}:/app" -w /app node:18-sl
 - `GET /offers`, `GET /offers/premium?city=Paris`, `GET /offers/:offerId`;
 - `POST /offers`, `PATCH /offers/:offerId`, `DELETE /offers/:offerId`;
 - `GET/POST /offers/:offerId/comments`;
-- `POST /users/register`, `POST /users/:userId/avatar`, `POST /users/login`, `GET /users/login`, `DELETE /users/logout`;
+- `POST /users/register`, `POST /users/avatar`, `POST /users/login`, `GET /users/login`, `DELETE /users/logout`;
 - `GET /favorites`, `PUT /favorites/:offerId`, `DELETE /favorites/:offerId`.
 
 Тела запросов предложений и входа передаются как JSON. Регистрация поддерживает
